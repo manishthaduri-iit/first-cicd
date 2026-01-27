@@ -511,20 +511,37 @@
         <button class="fp-close-btn" onclick="closeFullPlayer()"><i class="fas fa-chevron-down"></i></button>
         <img src="https://via.placeholder.com/350" class="fp-art" id="fp-img">
 
-        <div class="fp-info">
-            <div class="fp-title" id="fp-title">Not Playing</div>
-            <div class="fp-artist" id="fp-artist"></div>
+        <div
+            style="display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 350px; margin-bottom: 24px;">
+            <div class="fp-info" style="text-align: left; margin: 0;">
+                <div class="fp-title" id="fp-title" style="font-size: 24px;">Not Playing</div>
+                <div class="fp-artist" id="fp-artist" style="font-size: 16px;"></div>
+            </div>
+            <button class="control-btn" onclick="toggleLike()"><i class="far fa-heart" id="fp-like-icon"
+                    style="font-size: 24px;"></i></button>
         </div>
 
-        <div class="fp-controls">
-            <i class="fas fa-step-backward" onclick="playPrev()"></i>
+        <!-- Full Player Progress -->
+        <div class="progress-container"
+            style="width: 100%; max-width: 350px; margin-bottom: 32px; display: flex; flex-direction: column; gap: 8px;">
+            <div class="progress-bar-bg" style="width: 100%; height: 4px;" onclick="seek(event)">
+                <div class="progress-bar-fg" id="fp-progress-fg"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; width: 100%; color: #b3b3b3; font-size: 12px;">
+                <span id="fp-curr-time">0:00</span>
+                <span id="fp-dur-time">--:--</span>
+            </div>
+        </div>
+
+        <div class="fp-controls" style="width: 100%; max-width: 350px; justify-content: space-between;">
+            <i class="fas fa-random" id="btn-shuffle" onclick="toggleShuffle()" style="font-size: 20px;"></i>
+            <i class="fas fa-step-backward" onclick="playPrev()" style="font-size: 28px;"></i>
             <div class="fp-play-btn" onclick="togglePlay()">
                 <i class="fas fa-play" id="fp-play-icon"></i>
             </div>
-            <i class="fas fa-step-forward" onclick="playNext()"></i>
+            <i class="fas fa-step-forward" onclick="playNext()" style="font-size: 28px;"></i>
+            <i class="fas fa-redo" id="btn-repeat" onclick="toggleRepeat()" style="font-size: 20px;"></i>
         </div>
-
-        <!-- Re-use progress container for full player in v2 if needed, for now simplistic -->
     </div>
 
     <!-- Audio Element -->
@@ -537,6 +554,10 @@
         let likedSongs = JSON.parse(localStorage.getItem('liked_songs')) || [];
         const audio = document.getElementById('audio-player');
 
+        // State
+        let isShuffle = false;
+        let isRepeat = false;
+
         // Logic
         window.addEventListener('load', () => {
             search('Hindi Top 50');
@@ -544,22 +565,30 @@
         });
 
         // Audio Events
-        audio.addEventListener('play', () => {
-            updatePlayIcons(true);
-        });
-        audio.addEventListener('pause', () => {
-            updatePlayIcons(false);
-        });
+        audio.addEventListener('play', () => { updatePlayIcons(true); });
+        audio.addEventListener('pause', () => { updatePlayIcons(false); });
+
         audio.addEventListener('timeupdate', () => {
             if (audio.duration) {
                 const pct = (audio.currentTime / audio.duration) * 100;
+                // Mini Player
                 document.getElementById('progress-fg').style.width = pct + '%';
                 document.getElementById('curr-time').innerText = fmtTime(audio.currentTime);
                 document.getElementById('dur-time').innerText = fmtTime(audio.duration);
+                // Full Player
+                document.getElementById('fp-progress-fg').style.width = pct + '%';
+                document.getElementById('fp-curr-time').innerText = fmtTime(audio.currentTime);
+                document.getElementById('fp-dur-time').innerText = fmtTime(audio.duration);
             }
         });
+
         audio.addEventListener('ended', () => {
-            playNext();
+            if (isRepeat) {
+                audio.currentTime = 0;
+                audio.play();
+            } else {
+                playNext();
+            }
         });
 
         function updatePlayIcons(isPlaying) {
@@ -568,22 +597,17 @@
             document.getElementById('fp-play-icon').className = cls;
         }
 
-        function handleKey(e) {
-            if (e.key === 'Enter') search(e.target.value);
-        }
+        function handleKey(e) { if (e.key === 'Enter') search(e.target.value); }
 
         async function search(query) {
             const grid = document.getElementById('resultsGrid');
             grid.innerHTML = '<div style="color: #aaa;">Searching...</div>';
-
             try {
                 const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
                 const tracks = await res.json();
-                currentPlaylist = tracks; // Update Playlist
+                currentPlaylist = tracks;
                 renderGrid(tracks, grid);
-            } catch (e) {
-                grid.innerHTML = 'Error loading tracks.';
-            }
+            } catch (e) { grid.innerHTML = 'Error loading tracks.'; }
         }
 
         function renderGrid(tracks, container) {
@@ -606,43 +630,50 @@
 
         function loadTrack(track) {
             currentTrack = track;
-
             // UI Update (Mini & Full)
             const elements = [
                 { img: 'np-img', title: 'np-title', artist: 'np-artist' },
                 { img: 'fp-img', title: 'fp-title', artist: 'fp-artist' }
             ];
-
             elements.forEach(el => {
                 document.getElementById(el.img).src = track.cover_xl || track.cover;
                 document.getElementById(el.title).innerText = track.title;
                 document.getElementById(el.artist).innerText = track.artist;
             });
-
             updateLikeIcon();
-
-            // Stream
-            if (track.id) {
-                // Use new streaming endpoint
-                audio.src = `/stream/${track.id}`;
-                audio.play().catch(e => console.error("Playback error", e));
-            }
+            if (track.id) { audio.src = `/stream/${track.id}`; audio.play().catch(e => console.error("Playback error", e)); }
         }
 
         function playNext() {
             if (!currentTrack || currentPlaylist.length === 0) return;
-            const idx = currentPlaylist.findIndex(t => t.id === currentTrack.id);
-            if (idx > -1 && idx < currentPlaylist.length - 1) {
-                loadTrack(currentPlaylist[idx + 1]);
+
+            if (isShuffle) {
+                // Random
+                const randomIdx = Math.floor(Math.random() * currentPlaylist.length);
+                loadTrack(currentPlaylist[randomIdx]);
+            } else {
+                // Sequential
+                const idx = currentPlaylist.findIndex(t => t.id === currentTrack.id);
+                if (idx > -1 && idx < currentPlaylist.length - 1) {
+                    loadTrack(currentPlaylist[idx + 1]);
+                }
             }
         }
 
         function playPrev() {
             if (!currentTrack || currentPlaylist.length === 0) return;
             const idx = currentPlaylist.findIndex(t => t.id === currentTrack.id);
-            if (idx > 0) {
-                loadTrack(currentPlaylist[idx - 1]);
-            }
+            if (idx > 0) loadTrack(currentPlaylist[idx - 1]);
+        }
+
+        function toggleShuffle() {
+            isShuffle = !isShuffle;
+            document.getElementById('btn-shuffle').style.color = isShuffle ? '#1ed760' : '#b3b3b3';
+        }
+
+        function toggleRepeat() {
+            isRepeat = !isRepeat;
+            document.getElementById('btn-repeat').style.color = isRepeat ? '#1ed760' : '#b3b3b3';
         }
 
         function togglePlay() {
@@ -656,7 +687,6 @@
             const idx = likedSongs.findIndex(x => x.id === currentTrack.id);
             if (idx > -1) likedSongs.splice(idx, 1);
             else likedSongs.push(currentTrack);
-
             localStorage.setItem('liked_songs', JSON.stringify(likedSongs));
             updateLikeIcon();
             renderLiked();
@@ -664,12 +694,13 @@
 
         function updateLikeIcon() {
             const icon = document.getElementById('like-icon');
+            const fpIcon = document.getElementById('fp-like-icon');
             if (currentTrack && likedSongs.find(x => x.id === currentTrack.id)) {
-                icon.className = 'fas fa-heart';
-                icon.style.color = '#1ed760';
+                icon.className = 'fas fa-heart'; icon.style.color = '#1ed760';
+                fpIcon.className = 'fas fa-heart'; fpIcon.style.color = '#1ed760';
             } else {
-                icon.className = 'far fa-heart';
-                icon.style.color = '#b3b3b3';
+                icon.className = 'far fa-heart'; icon.style.color = '#b3b3b3';
+                fpIcon.className = 'far fa-heart'; fpIcon.style.color = '#b3b3b3';
             }
         }
 
@@ -679,8 +710,9 @@
 
         function seek(e) {
             if (!audio.duration) return;
-            const bar = document.getElementById('progress-bar');
-            const pct = e.offsetX / bar.clientWidth;
+            // Handle both seek bars
+            const rect = e.target.getBoundingClientRect();
+            const pct = (e.clientX - rect.left) / rect.width;
             audio.currentTime = pct * audio.duration;
         }
 
@@ -690,28 +722,13 @@
             return `${m}:${sec < 10 ? '0' : ''}${sec}`;
         }
 
-        // --- Full Player Logic ---
-        function openFullPlayer(e) {
-            // Prevent opening if clicking controls
-            document.getElementById('fullPlayer').classList.add('active');
-        }
-
-        function closeFullPlayer() {
-            document.getElementById('fullPlayer').classList.remove('active');
-        }
-
-        // Navigation
+        function openFullPlayer(e) { document.getElementById('fullPlayer').classList.add('active'); }
+        function closeFullPlayer() { document.getElementById('fullPlayer').classList.remove('active'); }
         function setView(view) {
             const home = document.getElementById('home-view');
             const liked = document.getElementById('liked-view');
-
-            if (view === 'home') {
-                home.classList.remove('hidden');
-                liked.classList.add('hidden');
-            } else if (view === 'liked') {
-                home.classList.add('hidden');
-                liked.classList.remove('hidden');
-            }
+            if (view === 'home') { home.classList.remove('hidden'); liked.classList.add('hidden'); }
+            else if (view === 'liked') { home.classList.add('hidden'); liked.classList.remove('hidden'); }
         }
     </script>
 </body>
