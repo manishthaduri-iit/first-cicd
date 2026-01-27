@@ -1,4 +1,8 @@
 flask
 gunicorn
+psutil
+requests
+ytmusicapi
+yt-dlp
 
 
