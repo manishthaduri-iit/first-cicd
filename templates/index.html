@@ -415,6 +415,47 @@
             color: #fff;
         }
 
+        /* Search Overlay */
+        .search-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 300;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .search-overlay.active {
+            display: flex;
+        }
+
+        .search-box-large {
+            background: #333;
+            border: none;
+            border-radius: 50px;
+            padding: 20px 40px;
+            font-size: 32px;
+            color: #fff;
+            width: 80%;
+            max-width: 800px;
+            outline: none;
+            text-align: center;
+        }
+
+        .search-close {
+            position: absolute;
+            top: 40px;
+            right: 40px;
+            font-size: 40px;
+            color: #fff;
+            cursor: pointer;
+        }
+
         /* Utility */
         .hidden {
             display: none !important;
@@ -436,8 +477,8 @@
             </div>
             <ul class="nav-links">
                 <li class="nav-item active" onclick="setView('home')"><i class="fas fa-home"></i> Home</li>
-                <li class="nav-item"><i class="fas fa-search"></i> Search</li>
-                <li class="nav-item" onclick="setView('library')"><i class="fas fa-book"></i> Your Library</li>
+                <li class="nav-item" onclick="openSearch()"><i class="fas fa-search"></i> Search</li>
+                <li class="nav-item" onclick="setView('liked')"><i class="fas fa-book"></i> Your Library</li>
                 <div class="divider"></div>
                 <li class="nav-item" onclick="setView('liked')"><i class="fas fa-heart"></i> Liked Songs</li>
             </ul>
@@ -446,10 +487,9 @@
         <!-- content -->
         <div class="content">
             <div class="top-bar">
-                <div class="search-container">
+                <div class="search-container" onclick="openSearch()">
                     <i class="fas fa-search" style="color: #000;"></i>
-                    <input type="text" id="searchInput" placeholder="What do you want to play?"
-                        onkeypress="handleKey(event)">
+                    <span style="color: #666; margin-left: 8px;">Click to Search...</span>
                 </div>
             </div>
 
@@ -462,10 +502,18 @@
             </div>
 
             <div id="liked-view" class="hidden">
-                <h2>Liked Songs</h2>
+                <h2>Your Library (Liked Songs)</h2>
                 <div class="grid" id="likedGrid"></div>
             </div>
         </div>
+    </div>
+
+    <!-- Search Overlay -->
+    <div class="search-overlay" id="searchOverlay">
+        <div class="search-close" onclick="closeSearch()">&times;</div>
+        <input type="text" class="search-box-large" id="largeSearchInput" placeholder="What do you want to listen to?"
+            onkeypress="handleLargeKey(event)">
+        <div style="margin-top: 20px; color: #aaa;">Press Enter to Search</div>
     </div>
 
     <!-- Player Bar -->
@@ -597,11 +645,17 @@
             document.getElementById('fp-play-icon').className = cls;
         }
 
-        function handleKey(e) { if (e.key === 'Enter') search(e.target.value); }
+        function handleLargeKey(e) {
+            if (e.key === 'Enter') {
+                search(e.target.value);
+                closeSearch();
+            }
+        }
 
         async function search(query) {
             const grid = document.getElementById('resultsGrid');
             grid.innerHTML = '<div style="color: #aaa;">Searching...</div>';
+            setView('home'); // Switch to home to see results
             try {
                 const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
                 const tracks = await res.json();
@@ -722,8 +776,18 @@
             return `${m}:${sec < 10 ? '0' : ''}${sec}`;
         }
 
+        // --- Search Overlay Logic ---
+        function openSearch() {
+            document.getElementById('searchOverlay').classList.add('active');
+            document.getElementById('largeSearchInput').focus();
+        }
+        function closeSearch() { document.getElementById('searchOverlay').classList.remove('active'); }
+
+        // --- Full Player Logic ---
         function openFullPlayer(e) { document.getElementById('fullPlayer').classList.add('active'); }
         function closeFullPlayer() { document.getElementById('fullPlayer').classList.remove('active'); }
+
+        // Navigation
         function setView(view) {
             const home = document.getElementById('home-view');
             const liked = document.getElementById('liked-view');
