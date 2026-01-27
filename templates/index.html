@@ -336,6 +336,85 @@
             justify-content: flex-end;
         }
 
+        /* Full Player Overlay */
+        .full-player-overlay {
+            position: fixed;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #1e1e1e 0%, #000 100%);
+            z-index: 200;
+            transition: top 0.3s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+        }
+
+        .full-player-overlay.active {
+            top: 0;
+        }
+
+        .fp-close-btn {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .fp-art {
+            width: 350px;
+            height: 350px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+            margin-bottom: 32px;
+            object-fit: cover;
+        }
+
+        .fp-info {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .fp-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .fp-artist {
+            font-size: 18px;
+            color: var(--text-sub);
+        }
+
+        .fp-controls {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+        }
+
+        .fp-controls i {
+            font-size: 24px;
+            cursor: pointer;
+            color: #b3b3b3;
+            transition: 0.2s;
+        }
+
+        .fp-controls i:hover {
+            color: #fff;
+        }
+
+        .fp-play-btn i {
+            font-size: 48px;
+            color: #fff;
+        }
+
         /* Utility */
         .hidden {
             display: none !important;
@@ -389,29 +468,31 @@
         </div>
     </div>
 
-    <!-- Player -->
-    <div class="player-bar">
+    <!-- Player Bar -->
+    <div class="player-bar" onclick="openFullPlayer(event)">
         <div class="player-left">
             <img src="https://via.placeholder.com/56" class="track-img" id="np-img">
             <div class="track-info">
                 <div class="track-name" id="np-title">Not Playing</div>
                 <div class="track-artist" id="np-artist"></div>
             </div>
-            <button class="control-btn" style="margin-left:16px;" onclick="toggleLike()"><i class="far fa-heart"
-                    id="like-icon"></i></button>
+            <button class="control-btn" style="margin-left:16px;" onclick="toggleLike(); event.stopPropagation();"><i
+                    class="far fa-heart" id="like-icon"></i></button>
         </div>
 
         <div class="player-center">
             <div class="player-controls">
-                <button class="control-btn"><i class="fas fa-random"></i></button>
-                <button class="control-btn"><i class="fas fa-step-backward"></i></button>
-                <button class="control-btn play-pause-btn" onclick="togglePlay()">
+                <button class="control-btn" onclick="event.stopPropagation()"><i class="fas fa-random"></i></button>
+                <button class="control-btn" onclick="playPrev(); event.stopPropagation()"><i
+                        class="fas fa-step-backward"></i></button>
+                <button class="control-btn play-pause-btn" onclick="togglePlay(); event.stopPropagation()">
                     <i class="fas fa-play" id="play-icon" style="font-size: 14px;"></i>
                 </button>
-                <button class="control-btn"><i class="fas fa-step-forward"></i></button>
-                <button class="control-btn"><i class="fas fa-redo"></i></button>
+                <button class="control-btn" onclick="playNext(); event.stopPropagation()"><i
+                        class="fas fa-step-forward"></i></button>
+                <button class="control-btn" onclick="event.stopPropagation()"><i class="fas fa-redo"></i></button>
             </div>
-            <div class="progress-container">
+            <div class="progress-container" onclick="event.stopPropagation()">
                 <span id="curr-time">0:00</span>
                 <div class="progress-bar-bg" id="progress-bar" onclick="seek(event)">
                     <div class="progress-bar-fg" id="progress-fg"></div>
@@ -425,12 +506,34 @@
         </div>
     </div>
 
+    <!-- Full Player Modal -->
+    <div class="full-player-overlay" id="fullPlayer">
+        <button class="fp-close-btn" onclick="closeFullPlayer()"><i class="fas fa-chevron-down"></i></button>
+        <img src="https://via.placeholder.com/350" class="fp-art" id="fp-img">
+
+        <div class="fp-info">
+            <div class="fp-title" id="fp-title">Not Playing</div>
+            <div class="fp-artist" id="fp-artist"></div>
+        </div>
+
+        <div class="fp-controls">
+            <i class="fas fa-step-backward" onclick="playPrev()"></i>
+            <div class="fp-play-btn" onclick="togglePlay()">
+                <i class="fas fa-play" id="fp-play-icon"></i>
+            </div>
+            <i class="fas fa-step-forward" onclick="playNext()"></i>
+        </div>
+
+        <!-- Re-use progress container for full player in v2 if needed, for now simplistic -->
+    </div>
+
     <!-- Audio Element -->
     <audio id="audio-player"></audio>
 
     <script>
         // Data
         let currentTrack = null;
+        let currentPlaylist = [];
         let likedSongs = JSON.parse(localStorage.getItem('liked_songs')) || [];
         const audio = document.getElementById('audio-player');
 
@@ -442,10 +545,10 @@
 
         // Audio Events
         audio.addEventListener('play', () => {
-            document.getElementById('play-icon').className = 'fas fa-pause';
+            updatePlayIcons(true);
         });
         audio.addEventListener('pause', () => {
-            document.getElementById('play-icon').className = 'fas fa-play';
+            updatePlayIcons(false);
         });
         audio.addEventListener('timeupdate', () => {
             if (audio.duration) {
@@ -456,9 +559,14 @@
             }
         });
         audio.addEventListener('ended', () => {
-            document.getElementById('play-icon').className = 'fas fa-play';
-            document.getElementById('progress-fg').style.width = '0%';
+            playNext();
         });
+
+        function updatePlayIcons(isPlaying) {
+            const cls = isPlaying ? 'fas fa-pause' : 'fas fa-play';
+            document.getElementById('play-icon').className = cls;
+            document.getElementById('fp-play-icon').className = cls;
+        }
 
         function handleKey(e) {
             if (e.key === 'Enter') search(e.target.value);
@@ -471,6 +579,7 @@
             try {
                 const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
                 const tracks = await res.json();
+                currentPlaylist = tracks; // Update Playlist
                 renderGrid(tracks, grid);
             } catch (e) {
                 grid.innerHTML = 'Error loading tracks.';
@@ -498,10 +607,18 @@
         function loadTrack(track) {
             currentTrack = track;
 
-            // UI
-            document.getElementById('np-img').src = track.cover;
-            document.getElementById('np-title').innerText = track.title;
-            document.getElementById('np-artist').innerText = track.artist;
+            // UI Update (Mini & Full)
+            const elements = [
+                { img: 'np-img', title: 'np-title', artist: 'np-artist' },
+                { img: 'fp-img', title: 'fp-title', artist: 'fp-artist' }
+            ];
+
+            elements.forEach(el => {
+                document.getElementById(el.img).src = track.cover_xl || track.cover;
+                document.getElementById(el.title).innerText = track.title;
+                document.getElementById(el.artist).innerText = track.artist;
+            });
+
             updateLikeIcon();
 
             // Stream
@@ -509,6 +626,22 @@
                 // Use new streaming endpoint
                 audio.src = `/stream/${track.id}`;
                 audio.play().catch(e => console.error("Playback error", e));
+            }
+        }
+
+        function playNext() {
+            if (!currentTrack || currentPlaylist.length === 0) return;
+            const idx = currentPlaylist.findIndex(t => t.id === currentTrack.id);
+            if (idx > -1 && idx < currentPlaylist.length - 1) {
+                loadTrack(currentPlaylist[idx + 1]);
+            }
+        }
+
+        function playPrev() {
+            if (!currentTrack || currentPlaylist.length === 0) return;
+            const idx = currentPlaylist.findIndex(t => t.id === currentTrack.id);
+            if (idx > 0) {
+                loadTrack(currentPlaylist[idx - 1]);
             }
         }
 
@@ -555,6 +688,16 @@
             const m = Math.floor(s / 60);
             const sec = Math.floor(s % 60);
             return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+        }
+
+        // --- Full Player Logic ---
+        function openFullPlayer(e) {
+            // Prevent opening if clicking controls
+            document.getElementById('fullPlayer').classList.add('active');
+        }
+
+        function closeFullPlayer() {
+            document.getElementById('fullPlayer').classList.remove('active');
         }
 
         // Navigation

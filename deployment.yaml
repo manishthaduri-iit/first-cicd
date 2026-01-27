@@ -4,6 +4,7 @@ metadata:
   name: vibestream-app
 spec:
   replicas: 1
+  timeoutSeconds: 600
   selector:
     matchLabels:
       app: vibestream
@@ -15,7 +16,7 @@ spec:
       containers:
       - name: vibestream
         image: manishthaduri26/devops-demo:latest
-        imagePullPolicy: IfNotPresent  # Use local image if available
+        imagePullPolicy: Always  # Critical for CD: Always check for updates
         ports:
         - containerPort: 5000
         env:
