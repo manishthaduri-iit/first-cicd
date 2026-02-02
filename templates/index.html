@@ -353,6 +353,16 @@
             padding: 40px;
         }
 
+        #visualizer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.6;
+        }
+
         .full-player-overlay.active {
             top: 0;
         }
@@ -464,6 +474,35 @@
         .active-view {
             display: block;
         }
+
+        /* Lyrics */
+        .lyrics-container {
+            position: absolute;
+            top: 20%;
+            width: 100%;
+            height: 50%;
+            text-align: center;
+            overflow-y: auto;
+            padding: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 24px;
+            line-height: 1.6;
+            font-weight: 700;
+            text-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+            z-index: 10;
+            display: none;
+            mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+            -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+        }
+
+        .lyrics-container.active {
+            display: block;
+        }
+
+        .lyrics-container::-webkit-scrollbar {
+            width: 0px;
+            background: transparent;
+        }
     </style>
 </head>
 
@@ -478,7 +517,6 @@
             <ul class="nav-links">
                 <li class="nav-item active" onclick="setView('home')"><i class="fas fa-home"></i> Home</li>
                 <li class="nav-item" onclick="openSearch()"><i class="fas fa-search"></i> Search</li>
-                <li class="nav-item" onclick="setView('liked')"><i class="fas fa-book"></i> Your Library</li>
                 <div class="divider"></div>
                 <li class="nav-item" onclick="setView('liked')"><i class="fas fa-heart"></i> Liked Songs</li>
             </ul>
@@ -556,8 +594,13 @@
 
     <!-- Full Player Modal -->
     <div class="full-player-overlay" id="fullPlayer">
+        <canvas id="visualizer"></canvas>
         <button class="fp-close-btn" onclick="closeFullPlayer()"><i class="fas fa-chevron-down"></i></button>
         <img src="https://via.placeholder.com/350" class="fp-art" id="fp-img">
+
+        <div class="lyrics-container" id="lyrics-content">
+            Loading lyrics...
+        </div>
 
         <div
             style="display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 350px; margin-bottom: 24px;">
@@ -588,7 +631,8 @@
                 <i class="fas fa-play" id="fp-play-icon"></i>
             </div>
             <i class="fas fa-step-forward" onclick="playNext()" style="font-size: 28px;"></i>
-            <i class="fas fa-redo" id="btn-repeat" onclick="toggleRepeat()" style="font-size: 20px;"></i>
+            <button class="control-btn" id="btn-lyrics" onclick="toggleLyrics()"
+                style="font-size: 14px; font-weight: 700; border: 1px solid #b3b3b3; border-radius: 4px; padding: 4px 8px; margin-left: 10px;">LYRICS</button>
         </div>
     </div>
 
@@ -787,12 +831,133 @@
         function openFullPlayer(e) { document.getElementById('fullPlayer').classList.add('active'); }
         function closeFullPlayer() { document.getElementById('fullPlayer').classList.remove('active'); }
 
+        // Visualizer
+        let audioCtx;
+        let analyser;
+        let canvas, ctx;
+        let dataArray;
+        let isVisualizerInit = false;
+
+        function initVisualizer() {
+            if (isVisualizerInit) return;
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                const source = audioCtx.createMediaElementSource(audio);
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                canvas = document.getElementById('visualizer');
+                ctx = canvas.getContext('2d');
+
+                isVisualizerInit = true;
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+                animateVisualizer();
+            } catch (e) { console.error("Visualizer init failed", e); }
+        }
+
+        function resizeCanvas() {
+            if (canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+        }
+
+        function animateVisualizer() {
+            requestAnimationFrame(animateVisualizer);
+            if (!isVisualizerInit) return;
+
+            analyser.getByteFrequencyData(dataArray);
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; // Trail effect
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const barWidth = (canvas.width / dataArray.length) * 2.5;
+            let barHeight;
+            let x = 0;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                barHeight = dataArray[i] * 1.5; // Scale height
+
+                // Laser colors
+                const r = barHeight + (25 * (i / dataArray.length));
+                const g = 250 * (i / dataArray.length);
+                const b = 50;
+
+                ctx.fillStyle = `rgb(${r},${g},${b})`;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+
+                x += barWidth + 1;
+            }
+        }
+
         // Navigation
         function setView(view) {
             const home = document.getElementById('home-view');
             const liked = document.getElementById('liked-view');
             if (view === 'home') { home.classList.remove('hidden'); liked.classList.add('hidden'); }
             else if (view === 'liked') { home.classList.add('hidden'); liked.classList.remove('hidden'); }
+        }
+
+        // Init visualizer on first interaction
+        document.body.addEventListener('click', () => {
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            if (!isVisualizerInit) initVisualizer();
+        }, { once: true });
+
+        // Lyrics
+        let isLyricsOpen = false;
+
+        async function toggleLyrics() {
+            isLyricsOpen = !isLyricsOpen;
+            const btn = document.getElementById('btn-lyrics');
+            const container = document.getElementById('lyrics-content');
+            const art = document.getElementById('fp-img');
+
+            if (isLyricsOpen) {
+                btn.style.color = '#000';
+                btn.style.background = '#1ed760';
+                btn.style.borderColor = '#1ed760';
+                container.classList.add('active');
+                art.style.opacity = '0.3'; // Dim artwork
+                if (currentTrack) await fetchLyrics(currentTrack.id);
+            } else {
+                btn.style.color = '#b3b3b3';
+                btn.style.background = 'transparent';
+                btn.style.borderColor = '#b3b3b3';
+                container.classList.remove('active');
+                art.style.opacity = '1';
+            }
+        }
+
+        async function fetchLyrics(videoId) {
+            const container = document.getElementById('lyrics-content');
+            container.innerHTML = '<div style="margin-top: 50%;">Loading...</div>';
+            try {
+                const res = await fetch(`/api/lyrics/${videoId}`);
+                const data = await res.json();
+                if (data.lyrics) {
+                    container.innerHTML = data.lyrics.replace(/\n/g, '<br>');
+                    container.innerHTML += `<br><br><span style="font-size: 14px; opacity: 0.6;">${data.source}</span>`;
+                } else {
+                    container.innerHTML = '<div style="margin-top: 50%;">Lyrics not found.</div>';
+                }
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = '<div style="margin-top: 50%;">Failed to load lyrics.</div>';
+            }
+        }
+
+        // Hook into track load
+        const originalLoadTrack = loadTrack;
+        loadTrack = function (track) {
+            originalLoadTrack(track);
+            if (isLyricsOpen) fetchLyrics(track.id);
         }
     </script>
 </body>

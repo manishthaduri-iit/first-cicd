@@ -64,6 +64,20 @@ def search():
     results = search_tracks(query)
     return jsonify(results)
 
+@app.route('/api/lyrics/<video_id>')
+def get_lyrics(video_id):
+    try:
+        watch_playlist = yt.get_watch_playlist(videoId=video_id)
+        lyrics_id = watch_playlist.get('lyrics')
+        if lyrics_id:
+            lyrics_data = yt.get_lyrics(lyrics_id)
+            return jsonify({"lyrics": lyrics_data['lyrics'], "source": lyrics_data.get('source', 'Source unknown')})
+        else:
+            return jsonify({"lyrics": "Lyrics not available for this track.", "source": ""})
+    except Exception as e:
+        print(f"Error fetching lyrics: {e}")
+        return jsonify({"error": "Failed to fetch lyrics"}), 500
+
 @app.route('/health')
 def health():
     return jsonify({"status": "healthy", "service": "vibestream-player"}), 200
