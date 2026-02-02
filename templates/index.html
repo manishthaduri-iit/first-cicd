@@ -832,7 +832,15 @@
             document.getElementById('fp-bg').style.backgroundImage = `url('${track.cover_xl || track.cover}')`;
 
             updateLikeIcon();
-            if (track.id) { audio.src = `/stream/${track.id}`; audio.play().catch(e => { console.error("Playback error", e); alert("Playback failed: " + e.message); }); }
+            if (track.id) {
+                audio.src = `/stream/${track.id}`;
+                audio.play().catch(e => {
+                    // Ignore AbortError caused by rapid track switching
+                    if (e.name === 'AbortError' || e.message.includes('interrupted')) return;
+                    console.error("Playback error", e);
+                    alert("Playback failed: " + e.message);
+                });
+            }
         }
 
         function playNext() {
@@ -1001,6 +1009,139 @@
                 eqFilters[index].gain.setTargetAtTime(value, audioCtx.currentTime, 0.1);
             }
         }
+
+        function resizeCanvas() {
+            if (canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+        }
+
+        function animateVisualizer() {
+            requestAnimationFrame(animateVisualizer);
+            if (!isVisualizerInit) return;
+
+            analyser.getByteFrequencyData(dataArray);
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const barWidth = (canvas.width / dataArray.length) * 2.5;
+            let barHeight;
+            let x = 0;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                barHeight = dataArray[i] * 1.5;
+                const r = barHeight + (25 * (i / dataArray.length));
+                const g = 250 * (i / dataArray.length);
+                const b = 50;
+
+                ctx.fillStyle = `rgb(${r},${g},${b})`;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+
+                x += barWidth + 1;
+            }
+        }
+
+        function setView(view) {
+            const home = document.getElementById('home-view');
+            const liked = document.getElementById('liked-view');
+            if (view === 'home') { home.classList.remove('hidden'); liked.classList.add('hidden'); }
+            else if (view === 'liked') { home.classList.add('hidden'); liked.classList.remove('hidden'); }
+        }
+
+        let isLyricsOpen = false;
+
+        async function toggleLyrics() {
+            isLyricsOpen = !isLyricsOpen;
+            const btn = document.getElementById('btn-lyrics');
+            const container = document.getElementById('lyrics-content');
+            const art = document.getElementById('fp-img');
+
+            if (isLyricsOpen) {
+                btn.style.color = '#000';
+                btn.style.background = '#1ed760';
+                btn.style.borderColor = '#1ed760';
+                container.classList.add('active');
+                art.style.opacity = '0.3';
+                if (currentTrack) await fetchLyrics(currentTrack.id);
+            } else {
+                btn.style.color = '#b3b3b3';
+                btn.style.background = 'transparent';
+                btn.style.borderColor = '#b3b3b3';
+                container.classList.remove('active');
+                art.style.opacity = '1';
+            }
+        }
+
+        async function fetchLyrics(videoId) {
+            const container = document.getElementById('lyrics-content');
+            container.innerHTML = '<div style="margin-top: 50%;">Loading...</div>';
+            try {
+                const res = await fetch(`/api/lyrics/${videoId}`);
+                const data = await res.json();
+                if (data.lyrics) {
+                    container.innerHTML = data.lyrics.replace(/\n/g, '<br>');
+                    container.innerHTML += `<br><br><span style="font-size: 14px; opacity: 0.6;">${data.source}</span>`;
+                } else {
+                    container.innerHTML = '<div style="margin-top: 50%;">Lyrics not found.</div>';
+                }
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = '<div style="margin-top: 50%;">Failed to load lyrics.</div>';
+            }
+        }
+
+        function updateTheme(img) {
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 1;
+                canvas.height = 1;
+                const tempImg = new Image();
+                tempImg.crossOrigin = "Anonymous";
+                tempImg.src = img.src;
+                tempImg.onload = function () {
+                    ctx.drawImage(tempImg, 0, 0, 1, 1);
+                    const p = ctx.getImageData(0, 0, 1, 1).data;
+                    const color = `rgb(${p[0]}, ${p[1]}, ${p[2]})`;
+                    document.documentElement.style.setProperty('--primary', color);
+                    const playBtn = document.querySelector('.fp-play-btn');
+                    if (playBtn) {
+                        playBtn.style.background = color;
+                        playBtn.style.boxShadow = `0 4px 15px ${color}66`;
+                    }
+                }
+            } catch (e) { console.error("Theme update failed", e); }
+        }
+
+        // Hook into track load
+        const originalLoadTrack = loadTrack;
+        loadTrack = function (track) {
+            originalLoadTrack(track);
+            if (isLyricsOpen) fetchLyrics(track.id);
+            const dlBtn = document.querySelector('.fa-download');
+            if (dlBtn) dlBtn.style.color = '#b3b3b3';
+            const img = document.getElementById('fp-img');
+            if (img) updateTheme(img);
+        }
+
+        function downloadTrack() {
+            if (!currentTrack) return;
+            const btn = event.target;
+            btn.style.color = '#1ed760';
+
+            const link = document.createElement('a');
+            link.href = `/api/download/${currentTrack.id}`;
+            link.target = '_blank';
+            link.click();
+            setTimeout(() => { btn.style.color = '#b3b3b3'; }, 2000);
+        }
+
+        document.body.addEventListener('click', () => {
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            if (!isVisualizerInit) initVisualizer();
+        }, { once: true });
         // Keyboard Shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT') return; // Ignore input fields
