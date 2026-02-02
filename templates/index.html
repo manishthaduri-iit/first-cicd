@@ -695,7 +695,7 @@
                 document.getElementById(el.artist).innerText = track.artist;
             });
             updateLikeIcon();
-            if (track.id) { audio.src = `/stream/${track.id}`; audio.play().catch(e => console.error("Playback error", e)); }
+            if (track.id) { audio.src = `/stream/${track.id}`; audio.play().catch(e => { console.error("Playback error", e); alert("Playback failed: " + e.message); }); }
         }
 
         function playNext() {

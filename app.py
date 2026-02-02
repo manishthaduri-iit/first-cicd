@@ -1,4 +1,5 @@
-from flask import Flask, render_template, jsonify, request, redirect
+from flask import Flask, render_template, jsonify, request, redirect, Response
+import requests
 from ytmusicapi import YTMusic
 import yt_dlp
 
@@ -16,7 +17,12 @@ def stream_audio(video_id):
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            return redirect(info['url'])
+            playback_url = info['url']
+            
+            # Proxy the audio content
+            req = requests.get(playback_url, stream=True)
+            return Response(req.iter_content(chunk_size=1024), content_type=req.headers['content-type'])
+            
     except Exception as e:
         print(f"Error streaming {video_id}: {e}")
         return jsonify({"error": "Failed to stream"}), 500
@@ -63,4 +69,4 @@ def health():
     return jsonify({"status": "healthy", "service": "vibestream-player"}), 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
