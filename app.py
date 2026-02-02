@@ -22,7 +22,16 @@ def stream_audio(video_id):
             
             # Proxy the audio content
             req = requests.get(playback_url, stream=True)
-            return Response(req.iter_content(chunk_size=1024), content_type=req.headers['content-type'])
+            def generate():
+                try:
+                    for chunk in req.iter_content(chunk_size=65536): # 64KB chunks
+                        if chunk:
+                            yield chunk
+                    print(f"Stream finished for {video_id}")
+                except Exception as e:
+                    print(f"Stream error for {video_id}: {e}")
+
+            return Response(generate(), content_type=req.headers['content-type'])
             
     except Exception as e:
         print(f"Error streaming {video_id}: {e}")
