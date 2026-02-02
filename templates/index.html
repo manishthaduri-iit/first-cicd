@@ -363,6 +363,19 @@
             opacity: 0.6;
         }
 
+        .fp-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            background-size: cover;
+            background-position: center;
+            filter: blur(30px) brightness(0.4);
+            transition: background-image 0.5s ease-in-out;
+        }
+
         .full-player-overlay.active {
             top: 0;
         }
@@ -594,6 +607,7 @@
 
     <!-- Full Player Modal -->
     <div class="full-player-overlay" id="fullPlayer">
+        <div class="fp-bg" id="fp-bg"></div>
         <canvas id="visualizer"></canvas>
         <button class="fp-close-btn" onclick="closeFullPlayer()"><i class="fas fa-chevron-down"></i></button>
         <img src="https://via.placeholder.com/350" class="fp-art" id="fp-img">
@@ -633,6 +647,13 @@
             <i class="fas fa-step-forward" onclick="playNext()" style="font-size: 28px;"></i>
             <button class="control-btn" id="btn-lyrics" onclick="toggleLyrics()"
                 style="font-size: 14px; font-weight: 700; border: 1px solid #b3b3b3; border-radius: 4px; padding: 4px 8px; margin-left: 10px;">LYRICS</button>
+            <i class="fas fa-download" onclick="downloadTrack()"
+                style="font-size: 20px; margin-left: 20px; cursor: pointer; color: #b3b3b3;" title="Download MP3"></i>
+            <div class="control-btn" onclick="toggleBassBoost()"
+                style="cursor: pointer; margin-left: 20px; display: flex; flex-direction: column; align-items: center;">
+                <i class="fas fa-bolt" id="btn-bass" style="font-size: 20px; color: #b3b3b3;"></i>
+                <span style="font-size: 10px; margin-top: 4px; color: #b3b3b3;">BASS</span>
+            </div>
         </div>
     </div>
 
@@ -738,6 +759,9 @@
                 document.getElementById(el.title).innerText = track.title;
                 document.getElementById(el.artist).innerText = track.artist;
             });
+            // Set full screen background
+            document.getElementById('fp-bg').style.backgroundImage = `url('${track.cover_xl || track.cover}')`;
+
             updateLikeIcon();
             if (track.id) { audio.src = `/stream/${track.id}`; audio.play().catch(e => { console.error("Playback error", e); alert("Playback failed: " + e.message); }); }
         }
@@ -838,13 +862,27 @@
         let dataArray;
         let isVisualizerInit = false;
 
+        // Bass Boost
+        let bassFilter;
+        let isBassBoostOn = false;
+
         function initVisualizer() {
             if (isVisualizerInit) return;
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 analyser = audioCtx.createAnalyser();
+
                 const source = audioCtx.createMediaElementSource(audio);
-                source.connect(analyser);
+
+                // Create Bass Filter
+                bassFilter = audioCtx.createBiquadFilter();
+                bassFilter.type = "lowshelf";
+                bassFilter.frequency.value = 200; // Hz
+                bassFilter.gain.value = 0; // dB (Starts off)
+
+                // Connect: Source -> Bass Filter -> Analyser -> Destination
+                source.connect(bassFilter);
+                bassFilter.connect(analyser);
                 analyser.connect(audioCtx.destination);
 
                 analyser.fftSize = 256;
@@ -953,12 +991,101 @@
             }
         }
 
+        // Dynamic Themes
+        function updateTheme(img) {
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 1;
+                canvas.height = 1;
+
+                // Allow cross-origin for image color extraction
+                const tempImg = new Image();
+                tempImg.crossOrigin = "Anonymous";
+                tempImg.src = img.src;
+
+                tempImg.onload = function () {
+                    ctx.drawImage(tempImg, 0, 0, 1, 1);
+                    const p = ctx.getImageData(0, 0, 1, 1).data;
+                    const color = `rgb(${p[0]}, ${p[1]}, ${p[2]})`;
+
+                    document.documentElement.style.setProperty('--primary', color);
+
+                    // Specific overrides for visibility
+                    const playBtn = document.querySelector('.fp-play-btn');
+                    if (playBtn) {
+                        playBtn.style.background = color;
+                        playBtn.style.boxShadow = `0 4px 15px ${color}66`;
+                    }
+                }
+            } catch (e) { console.error("Theme update failed", e); }
+        }
+
+        // Hook into track load
         // Hook into track load
         const originalLoadTrack = loadTrack;
         loadTrack = function (track) {
             originalLoadTrack(track);
             if (isLyricsOpen) fetchLyrics(track.id);
+            const dlBtn = document.querySelector('.fa-download');
+            if (dlBtn) dlBtn.style.color = '#b3b3b3';
+
+            // Trigger theme update
+            const img = document.getElementById('fp-img');
+            if (img) updateTheme(img);
         }
+
+        function downloadTrack() {
+            if (!currentTrack) return;
+            const btn = event.target;
+            btn.style.color = '#1ed760';
+
+            const link = document.createElement('a');
+            link.href = `/api/download/${currentTrack.id}`;
+            link.target = '_blank';
+            link.click();
+
+            setTimeout(() => { btn.style.color = '#b3b3b3'; }, 2000);
+        }
+        function toggleBassBoost() {
+            if (!isVisualizerInit) initVisualizer();
+            isBassBoostOn = !isBassBoostOn;
+
+            const btn = document.getElementById('btn-bass');
+
+            if (isBassBoostOn) {
+                bassFilter.gain.setTargetAtTime(15, audioCtx.currentTime, 0.1); // +15dB Boost
+                btn.style.color = '#1ed760';
+                btn.style.textShadow = '0 0 10px #1ed760';
+            } else {
+                bassFilter.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); // 0dB (Normal)
+                btn.style.color = '#b3b3b3';
+                btn.style.textShadow = 'none';
+            }
+        }
+        // Keyboard Shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return; // Ignore input fields
+
+            switch (e.code) {
+                case 'Space':
+                    e.preventDefault();
+                    togglePlay();
+                    break;
+                case 'ArrowRight':
+                    playNext();
+                    break;
+                case 'ArrowLeft':
+                    playPrev();
+                    break;
+                case 'KeyM':
+                    audio.muted = !audio.muted;
+                    break;
+                case 'KeyB':
+                    toggleBassBoost();
+                    break;
+            }
+        });
     </script>
 </body>
 

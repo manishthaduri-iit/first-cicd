@@ -32,14 +32,33 @@ def trigger_deployment():
     
     log("✅ Rollout triggered. App is updating...")
 
+def get_k8s_digest():
+    try:
+        # Get image ID of the running pod
+        cmd = 'kubectl get pod -l app=vibestream -o jsonpath="{.items[0].status.containerStatuses[0].imageID}"'
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        image_id = result.stdout.strip()
+        
+        # Format usually: docker-pullable://<repo>@sha256:<digest>
+        if "sha256:" in image_id:
+            digest = "sha256:" + image_id.split("sha256:")[-1]
+            return digest
+    except Exception as e:
+        log(f"Error checking K8s state: {e}")
+    return None
+
 def main():
     print("==========================================")
     print(f"🤖 VibeStream CD Agent (GitOps)")
     print(f"👀 Watching: {IMAGE_NAME}")
     print("==========================================")
     
-    current_digest = get_image_digest()
-    log(f"Initial Digest: {current_digest}")
+    current_digest = get_k8s_digest()
+    log(f"Current K8s Digest: {current_digest}")
+
+    if not current_digest:
+         log("⚠️ Could not detect running image. Assuming baseline = latest Hub.")
+         current_digest = get_image_digest()
 
     while True:
         try:
@@ -47,13 +66,12 @@ def main():
             new_digest = get_image_digest()
 
             if new_digest and new_digest != current_digest:
-                log(f"Hash Change Detected: {current_digest} -> {new_digest}")
+                log(f"🚨 Hash Mismatch! Hub: {new_digest[:12]}... vs K8s: {current_digest[:12]}...")
                 current_digest = new_digest
                 trigger_deployment()
             else:
-                # print(".", end="", flush=True) # Heartbeat
                 pass
-
+                
         except KeyboardInterrupt:
             print("\nStopping Agent.")
             break

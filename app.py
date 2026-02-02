@@ -1,4 +1,5 @@
-from flask import Flask, render_template, jsonify, request, redirect, Response
+from flask import Flask, render_template, jsonify, request, redirect, Response, send_file
+import flask
 import requests
 from ytmusicapi import YTMusic
 import yt_dlp
@@ -78,9 +79,32 @@ def get_lyrics(video_id):
         print(f"Error fetching lyrics: {e}")
         return jsonify({"error": "Failed to fetch lyrics"}), 500
 
-@app.route('/health')
-def health():
-    return jsonify({"status": "healthy", "service": "vibestream-player"}), 200
+@app.route('/api/download/<video_id>')
+def download_track(video_id):
+    try:
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        output_tmpl = f"downloads/{video_id}.%(ext)s"
+        
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': output_tmpl,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'quiet': True
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+            
+        file_path = f"downloads/{video_id}.mp3"
+        return flask.send_file(file_path, as_attachment=True)
+            
+    except Exception as e:
+        print(f"Download error: {e}")
+        return jsonify({"error": "Download failed"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
