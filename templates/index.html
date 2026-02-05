@@ -636,7 +636,8 @@
                 </button>
                 <button class="control-btn" onclick="playNext(); event.stopPropagation()"><i
                         class="fas fa-step-forward"></i></button>
-                <button class="control-btn" onclick="event.stopPropagation()"><i class="fas fa-redo"></i></button>
+                <button class="control-btn" onclick="toggleRepeat(); event.stopPropagation()"><i class="fas fa-redo"
+                        id="btn-repeat"></i></button>
             </div>
             <div class="progress-container" onclick="event.stopPropagation()">
                 <span id="curr-time">0:00</span>
@@ -717,6 +718,12 @@
                 <i class="fas fa-play" id="fp-play-icon" style="color: #000; font-size: 24px; margin-left: 4px;"></i>
             </div>
             <i class="fas fa-step-forward" onclick="playNext()" style="font-size: 24px;"></i>
+            <div style="position: relative; display: flex; align-items: center; justify-content: center; width: 24px;">
+                <i class="fas fa-redo" id="fp-btn-repeat" onclick="toggleRepeat()" style="font-size: 18px;"
+                    title="Repeat"></i>
+                <span id="repeat-one-badge"
+                    style="position: absolute; font-size: 8px; font-weight: bold; color: #000; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none;">1</span>
+            </div>
             <i class="fas fa-sliders-h" onclick="toggleEQ()" id="btn-eq" style="font-size: 18px;" title="Equalizer"></i>
 
             <button class="control-btn" id="btn-lyrics" onclick="toggleLyrics()"
@@ -738,7 +745,7 @@
 
         // State
         let isShuffle = false;
-        let isRepeat = false;
+        let repeatMode = 0; // 0: None, 1: All, 2: One
 
         // Logic
         window.addEventListener('load', () => {
@@ -765,11 +772,11 @@
         });
 
         audio.addEventListener('ended', () => {
-            if (isRepeat) {
+            if (repeatMode === 2) {
                 audio.currentTime = 0;
                 audio.play();
             } else {
-                playNext();
+                playNext(true); // Auto-advance
             }
         });
 
@@ -843,7 +850,7 @@
             }
         }
 
-        function playNext() {
+        function playNext(autoObj = false) {
             if (!currentTrack || currentPlaylist.length === 0) return;
 
             if (isShuffle) {
@@ -855,6 +862,9 @@
                 const idx = currentPlaylist.findIndex(t => t.id === currentTrack.id);
                 if (idx > -1 && idx < currentPlaylist.length - 1) {
                     loadTrack(currentPlaylist[idx + 1]);
+                } else if (repeatMode === 1 && idx === currentPlaylist.length - 1) {
+                    // Loop back to start
+                    loadTrack(currentPlaylist[0]);
                 }
             }
         }
@@ -871,8 +881,28 @@
         }
 
         function toggleRepeat() {
-            isRepeat = !isRepeat;
-            document.getElementById('btn-repeat').style.color = isRepeat ? '#1ed760' : '#b3b3b3';
+            repeatMode = (repeatMode + 1) % 3;
+            updateRepeatIcons();
+        }
+
+        function updateRepeatIcons() {
+            const btn = document.getElementById('btn-repeat');
+            const fpBtn = document.getElementById('fp-btn-repeat');
+            const badge = document.getElementById('repeat-one-badge');
+
+            // Reset
+            btn.style.color = '#b3b3b3';
+            fpBtn.style.color = '#b3b3b3';
+            badge.style.display = 'none';
+
+            if (repeatMode === 1) { // All
+                btn.style.color = '#1ed760';
+                fpBtn.style.color = '#1ed760';
+            } else if (repeatMode === 2) { // One
+                btn.style.color = '#1ed760';
+                fpBtn.style.color = '#1ed760';
+                badge.style.display = 'block';
+            }
         }
 
         function togglePlay() {
